@@ -1,0 +1,56 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Montserrat:wght@700&display=swap');
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes scale {
+  0% { transform: scale(1); }
+  100% { transform: scale(1.05); }
+}
+
+/* Global utility classes for consistent design */
+.container {
+  @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+}
+
+.card {
+  @apply bg-white rounded-lg shadow-md border border-lightGray/30 p-6;
+}
+
+.btn-primary {
+  @apply bg-steelGrad hover:brightness-110 text-white font-medium py-2 px-4 rounded-md transition-all duration-300 shadow-md hover:shadow-xl transform hover:scale-105;
+}
+
+.btn-secondary {
+  @apply bg-silverGrad hover:brightness-110 text-black font-medium py-2 px-4 rounded-md transition-all duration-300 shadow-md hover:shadow-lg transform hover:scale-105;
+}
+
+.input {
+  @apply w-full px-3 py-2 border border-lightGray/50 rounded-md focus:outline-none focus:ring-2 focus:ring-midGray focus:border-transparent bg-milky text-black;
+}
+
+.text-muted {
+  @apply text-midGray;
+}
+
+/* Animation utilities */
+.fade-in {
+  @apply transition-opacity duration-300;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+/* Chart specific styles */
+.chart-container {
+  @apply bg-milky rounded-lg p-4 shadow-md;
+}
+
+.chart-tooltip {
+  @apply bg-milky text-black border border-lightGray/50 rounded-md p-2 shadow-lg;
+}
