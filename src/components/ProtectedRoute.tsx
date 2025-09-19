@@ -1,4 +1,4 @@
-import { ReactNode } from 'react'
+import { ReactNode, useEffect } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useResourcesStore } from '../store/resourcesStore'
 
@@ -7,12 +7,17 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
-  const { isLoggedIn } = useResourcesStore()
+  const { isLoggedIn, checkAuth } = useResourcesStore()
 
-  // Проверяем авторизацию из localStorage (mock)
-  const isAuthenticated = isLoggedIn || localStorage.getItem('pingtower-auth') === 'true'
+  useEffect(() => {
+    // Проверяем авторизацию при монтировании компонента
+    checkAuth()
+  }, [checkAuth])
 
-  if (!isAuthenticated) {
+  // Проверяем наличие токена в localStorage
+  const hasToken = localStorage.getItem('accessToken')
+
+  if (!hasToken || !isLoggedIn) {
     return <Navigate to="/auth" replace />
   }
 

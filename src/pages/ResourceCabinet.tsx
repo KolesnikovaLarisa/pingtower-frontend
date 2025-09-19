@@ -5,6 +5,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { Tooltip as ReactTooltip } from 'react-tooltip'
 import Header from '../components/Header'
 import { useResourcesStore } from '../store/resourcesStore'
+import { getResourceById } from '../api/resources'
 
 const ResourceCabinet = () => {
   const { id } = useParams<{ id: string }>()
@@ -73,13 +74,26 @@ const ResourceCabinet = () => {
   }
 
   useEffect(() => {
-    // Имитация загрузки данных
-    const timer = setTimeout(() => {
-      setIsLoading(false)
-    }, 1000)
+    const loadResourceData = async () => {
+      if (!id) return
+      
+      try {
+        setIsLoading(true)
+        // Если ресурс не найден в store, загружаем его с сервера
+        if (!resource) {
+          await getResourceById(id)
+          // Обновляем store с полученными данными
+          // Здесь можно добавить логику обновления store
+        }
+      } catch (error) {
+        console.error('Error loading resource:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
 
-    return () => clearTimeout(timer)
-  }, [])
+    loadResourceData()
+  }, [id, resource])
 
   if (isLoading) {
     return (

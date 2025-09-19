@@ -61,9 +61,8 @@ const Header = () => {
                     </span>
                   </NavLink>
                   <button
-                    onClick={() => {
-                      logout()
-                      localStorage.removeItem('pingtower-auth')
+                    onClick={async () => {
+                      await logout()
                     }}
                     className="text-sm text-midGray hover:text-darkGray transition-colors"
                   >
@@ -126,9 +125,8 @@ const Header = () => {
                         <span>{user?.name || 'Личный кабинет'}</span>
                       </NavLink>
                       <button
-                        onClick={() => {
-                          logout()
-                          localStorage.removeItem('pingtower-auth')
+                        onClick={async () => {
+                          await logout()
                           setIsMenuOpen(false)
                         }}
                         className="block w-full text-center px-4 py-2 text-base font-medium text-midGray hover:text-darkGray transition-colors duration-200 rounded-md"

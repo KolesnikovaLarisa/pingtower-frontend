@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { Tooltip } from 'react-tooltip'
 import { useResourcesStore } from '../store/resourcesStore'
+import { loginUser, registerUser } from "../api/auth.ts";
 
 // Схемы валидации
 const loginSchema = yup.object({
@@ -54,34 +55,31 @@ const AuthPage = () => {
   })
 
   const onSubmit = async (data: LoginFormData | RegisterFormData) => {
-    setIsLoading(true)
-    setError('')
-    
+    setIsLoading(true);
+    setError("");
+  
     try {
-      // Имитация API запроса
-      await new Promise(resolve => setTimeout(resolve, 1500))
-      
-      // Имитация ошибки для демонстрации
-      if (data.email === 'error@example.com') {
-        throw new Error('Неверный email')
+      let response;
+      if (isLogin) {
+        // вход
+        response = await loginUser(data.email, data.password);
+      } else {
+        // регистрация
+        const regData = data as RegisterFormData;
+        response = await registerUser(regData.email, regData.password, regData.name);
       }
-      
-      // Mock авторизация
-      const user = {
-        id: '1',
-        name: 'name' in data ? data.name : 'Пользователь',
-        email: data.email
-      }
-      
-      login(user)
-      localStorage.setItem('pingtower-auth', 'true')
-      navigate('/app')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Произошла ошибка')
+  
+      // обновляем стор с данными пользователя
+      login(response.user);
+  
+      navigate("/app");
+    } catch (err: any) {
+      console.error("Auth error:", err);
+      setError(err.response?.data?.message || err.message || "Ошибка авторизации");
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   const handleOAuthLogin = (provider: 'google' | 'github') => {
     console.log(`OAuth login with ${provider}`)

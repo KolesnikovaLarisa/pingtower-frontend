@@ -1,5 +1,15 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { getCurrentUser, logoutUser } from '../api/auth'
+import { User } from '../types/api'
+import { 
+  getResources as apiGetResources, 
+  createResource as apiCreateResource, 
+  updateResource as apiUpdateResource, 
+  deleteResource as apiDeleteResource,
+  getResourceById as apiGetResourceById,
+  searchEndpoints as apiSearchEndpoints
+} from '../api/resources'
 
 export interface Endpoint {
   path: string
@@ -37,11 +47,7 @@ export interface NotificationLog {
   status: 'sent' | 'failed'
 }
 
-export interface User {
-  id: string
-  name: string
-  email: string
-}
+// User interface moved to types/api.ts
 
 interface ResourcesState {
   // Resources
@@ -52,15 +58,18 @@ interface ResourcesState {
     active: number
     sla: number
   }
-  addResource: (resource: Omit<Resource, 'id'>) => void
-  updateResource: (id: string, updates: Partial<Resource>) => void
-  removeResource: (id: string) => void
+  addResource: (resource: Omit<Resource, 'id'>) => Promise<void>
+  updateResource: (id: string, updates: Partial<Resource>) => Promise<void>
+  removeResource: (id: string) => Promise<void>
+  loadResources: () => Promise<void>
+  searchEndpoints: (url: string) => Promise<Array<{ path: string; method: string; status: string }>>
   
   // Auth
   isLoggedIn: boolean
   user: User | null
   login: (user: User) => void
-  logout: () => void
+  logout: () => Promise<void>
+  checkAuth: () => void
   
   // Logs
   logs: LogEntry[]
@@ -96,21 +105,73 @@ export const useResourcesStore = create<ResourcesState>()(
         active: 3,
         sla: 99.5
       },
-      addResource: (resource) => set((state) => ({
-        resources: [...state.resources, { ...resource, id: Date.now().toString() }]
-      })),
-      updateResource: (id, updates) => set((state) => ({
-        resources: state.resources.map(r => r.id === id ? { ...r, ...updates } : r)
-      })),
-      removeResource: (id) => set((state) => ({
-        resources: state.resources.filter(r => r.id !== id)
-      })),
+      addResource: async (resource) => {
+        try {
+          const newResource = await apiCreateResource(resource.name, resource.url);
+          set((state) => ({
+            resources: [...state.resources, newResource]
+          }));
+        } catch (error) {
+          console.error('Error adding resource:', error);
+          throw error;
+        }
+      },
+      updateResource: async (id, updates) => {
+        try {
+          const updatedResource = await apiUpdateResource(id, updates);
+          set((state) => ({
+            resources: state.resources.map(r => r.id === id ? updatedResource : r)
+          }));
+        } catch (error) {
+          console.error('Error updating resource:', error);
+          throw error;
+        }
+      },
+      removeResource: async (id) => {
+        try {
+          await apiDeleteResource(id);
+          set((state) => ({
+            resources: state.resources.filter(r => r.id !== id)
+          }));
+        } catch (error) {
+          console.error('Error removing resource:', error);
+          throw error;
+        }
+      },
+      loadResources: async () => {
+        try {
+          const resources = await apiGetResources();
+          set({ resources });
+        } catch (error) {
+          console.error('Error loading resources:', error);
+          throw error;
+        }
+      },
+      searchEndpoints: async (url) => {
+        try {
+          return await apiSearchEndpoints(url);
+        } catch (error) {
+          console.error('Error searching endpoints:', error);
+          throw error;
+        }
+      },
 
       // Auth
       isLoggedIn: false,
       user: null,
       login: (user) => set({ isLoggedIn: true, user }),
-      logout: () => set({ isLoggedIn: false, user: null }),
+      logout: async () => {
+        await logoutUser();
+        set({ isLoggedIn: false, user: null });
+      },
+      checkAuth: () => {
+        const user = getCurrentUser();
+        if (user) {
+          set({ isLoggedIn: true, user });
+        } else {
+          set({ isLoggedIn: false, user: null });
+        }
+      },
 
       // Logs
       logs: [

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { yupResolver } from '@hookform/resolvers/yup'
 import * as yup from 'yup'
@@ -26,7 +26,7 @@ const ResourcesPage = () => {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [resourceToDelete, setResourceToDelete] = useState<string | null>(null)
 
-  const { resources, metrics: storeMetrics, addResource, removeResource } = useResourcesStore()
+  const { resources, metrics: storeMetrics, addResource, removeResource, searchEndpoints: apiSearchEndpoints, loadResources } = useResourcesStore()
 
   const {
     register,
@@ -40,25 +40,28 @@ const ResourcesPage = () => {
 
   const watchedUrl = watch('url')
 
+  // Загружаем ресурсы при монтировании компонента
+  useEffect(() => {
+    loadResources().catch(err => {
+      console.error('Error loading resources:', err)
+    })
+  }, [loadResources])
+
   const searchEndpoints = async () => {
+    if (!watchedUrl) return
+    
     setIsSearching(true)
     setError('')
     
     try {
-      // Имитация поиска эндпоинтов
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      const endpoints = await apiSearchEndpoints(watchedUrl)
+      const endpointPaths = endpoints.map(ep => ep.path)
       
-      // Mock эндпоинты (увеличим количество для демонстрации прокрутки)
-      const mockEndpoints = [
-        '/login', '/home', '/api', '/dashboard', '/profile', 
-        '/settings', '/users', '/products', '/orders', '/reports',
-        '/analytics', '/notifications', '/help', '/support'
-      ]
-      setFoundEndpoints(mockEndpoints)
-      // Автоматически выбираем все найденные эндпоинты
-      setSelectedEndpoints(mockEndpoints)
-    } catch (err) {
-      setError('Ошибка поиска эндпоинтов')
+      setFoundEndpoints(endpointPaths)
+      setSelectedEndpoints(endpointPaths) // Автоматически выбираем все
+    } catch (err: any) {
+      console.error('Error searching endpoints:', err)
+      setError(err.response?.data?.message || 'Ошибка при поиске эндпоинтов')
     } finally {
       setIsSearching(false)
     }
@@ -82,29 +85,34 @@ const ResourcesPage = () => {
     }
   }
 
-  const onSubmit = (data: FormData) => {
+  const onSubmit = async (data: FormData) => {
     if (selectedEndpoints.length === 0) {
       setError('Выберите хотя бы один эндпоинт')
       return
     }
 
-    const newResource = {
-      name: data.name,
-      url: data.url,
-      endpoints: selectedEndpoints.map(path => ({
-        path,
+    try {
+      const newResource = {
+        name: data.name,
+        url: data.url,
+        endpoints: selectedEndpoints.map(path => ({
+          path,
+          status: 'online' as const,
+          errors24h: 0
+        })),
         status: 'online' as const,
-        errors24h: 0
-      })),
-      status: 'online' as const,
-      uptime: 100,
-      errors24h: 0,
-      active: selectedEndpoints.length,
-      sla: 100
-    }
+        uptime: 100,
+        errors24h: 0,
+        active: selectedEndpoints.length,
+        sla: 100
+      }
 
-    addResource(newResource)
-    closeModal()
+      await addResource(newResource)
+      closeModal()
+    } catch (err: any) {
+      console.error('Error adding resource:', err)
+      setError(err.response?.data?.message || 'Ошибка при добавлении ресурса')
+    }
   }
 
   const closeModal = () => {
@@ -120,11 +128,16 @@ const ResourcesPage = () => {
     setDeleteModalOpen(true)
   }
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (resourceToDelete) {
-      removeResource(resourceToDelete)
-      setDeleteModalOpen(false)
-      setResourceToDelete(null)
+      try {
+        await removeResource(resourceToDelete)
+        setDeleteModalOpen(false)
+        setResourceToDelete(null)
+      } catch (err: any) {
+        console.error('Error deleting resource:', err)
+        setError(err.response?.data?.message || 'Ошибка при удалении ресурса')
+      }
     }
   }
 
