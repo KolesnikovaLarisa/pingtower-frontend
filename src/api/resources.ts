@@ -4,16 +4,25 @@ export interface Resource {
   id: string;
   name: string;
   url: string;
-  endpoints: Array<{
+  overallStatus?: 'ONLINE' | 'OFFLINE' | 'UNKNOWN';
+  metrics?: {
+    uptime24h: string; // "99.43%"
+    avgResponseTime: number; // 460
+    incidents24h: number; // 0
+    lastCheck: string; // "2025-09-20T11:36:01.204198"
+  };
+  endpoints?: Array<{
     path: string;
     status: 'online' | 'offline';
     errors24h: number;
   }>;
-  status: 'online' | 'offline';
-  uptime: number;
-  errors24h: number;
-  active: number;
-  sla: number;
+  status?: 'online' | 'offline';
+  uptime?: number;
+  errors24h?: number;
+  active?: number;
+  sla?: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface CreateResourceRequest {
@@ -22,24 +31,86 @@ export interface CreateResourceRequest {
 }
 
 export interface ResourceStats {
-  uptime: number;
-  errors24h: number;
-  active: number;
-  sla: number;
-  responseTime: number;
-  totalRequests: number;
+  uptime: number; // Доступность (Uptime %)
+  responseTime: number; // Время отклика (Response Time)
+  incidents24h: number; // Частота сбоев - Количество инцидентов за период
+  mttr?: number; // MTTR (Mean Time To Resolve) - Среднее время от алерта до восстановления
+  slaCompliance?: number; // SLA Compliance - % времени, когда сервис соответствовал SLA
 }
 
 // Получить все ресурсы
 export async function getResources(): Promise<Resource[]> {
-  const { data } = await api.get<{ resources: Resource[] }>("/resources");
-  return data.resources;
+  console.log('API: Загружаем ресурсы...');
+  console.log('API: Базовый URL:', api.defaults.baseURL);
+  console.log('API: Полный URL:', `${api.defaults.baseURL}/resources`);
+  
+  // Проверяем токен перед запросом
+  const token = localStorage.getItem("accessToken");
+  console.log('API: Токен перед запросом:', token ? 'есть' : 'отсутствует');
+  if (token) {
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      console.log('API: Токен payload:', payload);
+      console.log('API: Токен истекает:', new Date(payload.exp * 1000));
+      console.log('API: Текущее время:', new Date());
+      console.log('API: Токен действителен:', payload.exp * 1000 > Date.now());
+    } catch (e) {
+      console.log('API: Ошибка декодирования токена:', e);
+    }
+  }
+  
+  try {
+    console.log('API: Используем endpoint: /resources');
+    const response = await api.get("/resources");
+    console.log('API: Полный ответ:', response);
+    console.log('API: Данные ответа:', response.data);
+    
+    // Проверяем разные возможные структуры ответа
+    let resources: Resource[] = [];
+    if (Array.isArray(response.data)) {
+      resources = response.data;
+    } else if (response.data.resources && Array.isArray(response.data.resources)) {
+      resources = response.data.resources;
+    } else if (response.data.data && Array.isArray(response.data.data)) {
+      resources = response.data.data;
+    } else {
+      console.warn('API: Неожиданная структура ответа:', response.data);
+      resources = [];
+    }
+    
+    console.log('API: Извлеченные ресурсы:', resources);
+    return resources;
+  } catch (error) {
+    console.error('API: Ошибка при загрузке ресурсов:', error);
+    throw error;
+  }
 }
 
 // Создать новый ресурс
 export async function createResource(name: string, url: string): Promise<Resource> {
-  const { data } = await api.post<Resource>("/resources", { name, url });
-  return data;
+  console.log('API: Создаем ресурс:', { name, url });
+  try {
+    const response = await api.post("/resources", { name, url });
+    console.log('API: Полный ответ при создании:', response);
+    console.log('API: Данные ответа при создании:', response.data);
+    
+    // Проверяем разные возможные структуры ответа
+    let resource: Resource;
+    if (response.data) {
+      resource = response.data;
+    } else if (response.data.data) {
+      resource = response.data.data;
+    } else {
+      console.warn('API: Неожиданная структура ответа при создании:', response.data);
+      throw new Error('Неожиданная структура ответа API');
+    }
+    
+    console.log('API: Созданный ресурс:', resource);
+    return resource;
+  } catch (error) {
+    console.error('API: Ошибка при создании ресурса:', error);
+    throw error;
+  }
 }
 
 // Обновить ресурс

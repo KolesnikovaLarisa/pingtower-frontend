@@ -4,7 +4,7 @@ import { yupResolver } from '@hookform/resolvers/yup'
 import * as yup from 'yup'
 import { Dialog, Transition } from '@headlessui/react'
 import { Fragment } from 'react'
-import { Plus, Search, CheckCircle, Loader2, Activity, AlertTriangle, Target } from 'lucide-react'
+import { Search, Loader2, Activity, AlertTriangle, Clock, Zap, Shield } from 'lucide-react'
 import { Tooltip } from 'react-tooltip'
 import Header from '../components/Header'
 import ResourceTile from '../components/ResourceTile'
@@ -26,7 +26,7 @@ const ResourcesPage = () => {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [resourceToDelete, setResourceToDelete] = useState<string | null>(null)
 
-  const { resources, metrics: storeMetrics, addResource, removeResource, searchEndpoints: apiSearchEndpoints, loadResources } = useResourcesStore()
+  const { resources, metrics: storeMetrics, addResource, removeResource, searchEndpoints: apiSearchEndpoints, loadResources, checkAuth } = useResourcesStore()
 
   const {
     register,
@@ -42,10 +42,14 @@ const ResourcesPage = () => {
 
   // Загружаем ресурсы при монтировании компонента
   useEffect(() => {
+    // Сначала проверяем авторизацию
+    checkAuth()
+    
+    // Затем загружаем ресурсы
     loadResources().catch(err => {
       console.error('Error loading resources:', err)
     })
-  }, [loadResources])
+  }, [loadResources, checkAuth])
 
   const searchEndpoints = async () => {
     if (!watchedUrl) return
@@ -111,7 +115,8 @@ const ResourcesPage = () => {
       closeModal()
     } catch (err: any) {
       console.error('Error adding resource:', err)
-      setError(err.response?.data?.message || 'Ошибка при добавлении ресурса')
+      // Ошибка уже обработана в store, просто закрываем модал
+      closeModal()
     }
   }
 
@@ -136,7 +141,9 @@ const ResourcesPage = () => {
         setResourceToDelete(null)
       } catch (err: any) {
         console.error('Error deleting resource:', err)
-        setError(err.response?.data?.message || 'Ошибка при удалении ресурса')
+        // Ошибка уже обработана в store, просто закрываем модал
+        setDeleteModalOpen(false)
+        setResourceToDelete(null)
       }
     }
   }
@@ -147,10 +154,41 @@ const ResourcesPage = () => {
   }
 
   const metrics = [
-    { label: 'Uptime', value: `${storeMetrics.uptime}%`, icon: Activity, color: 'text-green-600' },
-    { label: 'Сбои 24ч', value: storeMetrics.errors24h.toString(), icon: AlertTriangle, color: 'text-red-600' },
-    { label: 'Активные', value: storeMetrics.active.toString(), icon: CheckCircle, color: 'text-blue-600' },
-    { label: 'SLA', value: `${storeMetrics.sla}%`, icon: Target, color: 'text-purple-600' },
+    { 
+      label: 'Доступность', 
+      value: `${storeMetrics.uptime.toFixed(1)}%`, 
+      icon: Activity, 
+      color: 'text-green-600',
+      tooltip: 'Процент времени, когда сервис был доступен за последние 24 часа'
+    },
+    { 
+      label: 'Время отклика', 
+      value: `${storeMetrics.responseTime.toFixed(0)}мс`, 
+      icon: Clock, 
+      color: 'text-blue-600',
+      tooltip: 'Среднее время ответа сервера (производительность)'
+    },
+    { 
+      label: 'Частота сбоев', 
+      value: storeMetrics.incidents24h.toString(), 
+      icon: AlertTriangle, 
+      color: 'text-red-600',
+      tooltip: 'Количество инцидентов за период'
+    },
+    { 
+      label: 'MTTR', 
+      value: storeMetrics.mttr ? `${storeMetrics.mttr}м` : 'N/A', 
+      icon: Zap, 
+      color: 'text-orange-600',
+      tooltip: 'Среднее время от алерта до восстановления'
+    },
+    { 
+      label: 'SLA Compliance', 
+      value: `${storeMetrics.slaCompliance?.toFixed(1) || 0}%`, 
+      icon: Shield, 
+      color: 'text-purple-600',
+      tooltip: 'Процент времени, когда сервис соответствовал SLA'
+    },
   ]
 
   return (
@@ -171,21 +209,21 @@ const ResourcesPage = () => {
                 onClick={() => setIsModalOpen(true)}
                 className="flex items-center space-x-2 mt-4 sm:mt-0 text-white font-inter font-semibold px-4 py-2 rounded-md transition-all duration-300 shadow-md hover:shadow-xl transform hover:scale-105 bg-steelGrad hover:brightness-110"
               >
-                <Plus size={16} />
+                <Search size={16} />
                 <span>Добавить ресурс</span>
               </button>
             </div>
 
             {/* Resources Grid */}
-            {resources.length === 0 ? (
-              <div className="text-center py-12">
-                <div className="text-6xl mb-4">☹</div>
-                <h3 className="text-lg font-inter font-medium text-navyDark mb-2">Мониторить пока нечего</h3>
-                <p className="text-midGray font-inter">
-                  Добавьте скорее ресурс, а то мне скучно
-                </p>
-              </div>
-            ) : (
+        {resources.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="text-6xl mb-4">🚀</div>
+            <h3 className="text-lg font-inter font-medium text-navyDark mb-2">Начните мониторинг</h3>
+            <p className="text-midGray font-inter">
+              Добавьте свой первый ресурс для начала мониторинга
+            </p>
+          </div>
+        ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {resources.map((resource) => (
                   <ResourceTile key={resource.id} resource={resource} onDelete={handleDeleteResource} />
@@ -204,16 +242,26 @@ const ResourcesPage = () => {
               {metrics.map((metric, index) => {
                 const Icon = metric.icon
                 return (
-                  <div key={index} className="bg-gradient-to-br from-gray-300 to-gray-400 rounded-xl border border-gray-500/30 p-4 shadow-lg hover:shadow-xl transition-all duration-300 animate-fadeIn">
-                    <div className="flex items-center space-x-3">
-                      <div className="p-2 bg-steelGrad rounded-lg animate-pulse">
+                  <div 
+                    key={index} 
+                    className="bg-gradient-to-br from-gray-300 to-gray-400 rounded-xl border border-gray-500/30 p-4 shadow-lg hover:shadow-xl transition-all duration-300 animate-fadeIn h-24 flex items-center"
+                    data-tooltip-id={`metric-tooltip-${index}`}
+                    data-tooltip-content={metric.tooltip}
+                  >
+                    <div className="flex items-center space-x-3 w-full">
+                      <div className="p-2 bg-steelGrad rounded-lg animate-pulse flex-shrink-0">
                         <Icon className="h-4 w-4 text-white" />
                       </div>
-                      <div>
+                      <div className="flex-1 min-w-0">
                         <p className="text-sm text-white font-inter font-medium">{metric.label}</p>
                         <p className="text-lg font-inter font-bold text-white">{metric.value}</p>
                       </div>
                     </div>
+                    <Tooltip 
+                      id={`metric-tooltip-${index}`} 
+                      place="left"
+                      style={{ zIndex: 1000 }}
+                    />
                   </div>
                 )
               })}

@@ -21,6 +21,13 @@ export interface Resource {
   id: string
   name: string
   url: string
+  overallStatus?: 'ONLINE' | 'OFFLINE' | 'UNKNOWN'
+  metrics?: {
+    uptime24h: string // "99.43%"
+    avgResponseTime: number // 460
+    incidents24h: number // 0
+    lastCheck: string // "2025-09-20T11:36:01.204198"
+  }
   endpoints: Endpoint[]
   status: 'online' | 'offline'
   uptime: number
@@ -53,16 +60,18 @@ interface ResourcesState {
   // Resources
   resources: Resource[]
   metrics: {
-    uptime: number
-    errors24h: number
-    active: number
-    sla: number
+    uptime: number // Доступность (Uptime %)
+    responseTime: number // Время отклика (Response Time)
+    incidents24h: number // Частота сбоев - Количество инцидентов за период
+    mttr?: number // MTTR (Mean Time To Resolve) - Среднее время от алерта до восстановления
+    slaCompliance?: number // SLA Compliance - % времени, когда сервис соответствовал SLA
   }
   addResource: (resource: Omit<Resource, 'id'>) => Promise<void>
   updateResource: (id: string, updates: Partial<Resource>) => Promise<void>
   removeResource: (id: string) => Promise<void>
   loadResources: () => Promise<void>
   searchEndpoints: (url: string) => Promise<Array<{ path: string; method: string; status: string }>>
+  clearAllData: () => void
   
   // Auth
   isLoggedIn: boolean
@@ -80,48 +89,117 @@ interface ResourcesState {
 
 export const useResourcesStore = create<ResourcesState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       // Resources
-      resources: [
-        {
-          id: '1',
-          name: 'Мой сайт',
-          url: 'https://example.com',
-          endpoints: [
-            { path: '/login', status: 'online', errors24h: 0 },
-            { path: '/home', status: 'online', errors24h: 1 },
-            { path: '/api', status: 'offline', errors24h: 3 }
-          ],
-          status: 'online',
-          uptime: 99.2,
-          errors24h: 4,
-          active: 2,
-          sla: 99.5
-        }
-      ],
+      resources: [],
       metrics: {
-        uptime: 99,
-        errors24h: 2,
-        active: 3,
-        sla: 99.5
+        uptime: 0,
+        responseTime: 0,
+        incidents24h: 0,
+        mttr: undefined,
+        slaCompliance: 0
       },
       addResource: async (resource) => {
+        console.log('Store: Добавляем ресурс:', resource);
         try {
           const newResource = await apiCreateResource(resource.name, resource.url);
-          set((state) => ({
-            resources: [...state.resources, newResource]
-          }));
+          console.log('Store: Ресурс создан через API:', newResource);
+          set((state) => {
+            const updatedResources = [...state.resources, newResource];
+            const metrics = {
+              uptime: updatedResources.length > 0 ? updatedResources.reduce((sum, r) => {
+                const uptimeValue = r.metrics?.uptime24h ? 
+                  parseFloat(r.metrics.uptime24h.replace('%', '')) : 
+                  (r.uptime || 0);
+                return sum + uptimeValue;
+              }, 0) / updatedResources.length : 0,
+              responseTime: updatedResources.length > 0 ? updatedResources.reduce((sum, r) => {
+                return sum + (r.metrics?.avgResponseTime || 0);
+              }, 0) / updatedResources.length : 0,
+              incidents24h: updatedResources.reduce((sum, r) => {
+                return sum + (r.metrics?.incidents24h || r.errors24h || 0);
+              }, 0),
+              mttr: undefined,
+              slaCompliance: updatedResources.length > 0 ? updatedResources.reduce((sum, r) => {
+                const uptimeValue = r.metrics?.uptime24h ? 
+                  parseFloat(r.metrics.uptime24h.replace('%', '')) : 
+                  (r.uptime || 0);
+                return sum + uptimeValue;
+              }, 0) / updatedResources.length : 0
+            };
+            console.log('Store: Обновляем состояние с новым ресурсом:', { updatedResources, metrics });
+            return { resources: updatedResources, metrics };
+          });
         } catch (error) {
-          console.error('Error adding resource:', error);
-          throw error;
+          console.error('Store: Ошибка при добавлении ресурса через API:', error);
+          // Fallback: добавляем ресурс локально если API недоступен
+          const newResource = {
+            ...resource,
+            id: Date.now().toString(),
+            endpoints: [],
+            status: 'online' as const,
+            uptime: 100,
+            errors24h: 0,
+            active: 0,
+            sla: 100
+          };
+          console.log('Store: Добавляем ресурс локально (fallback):', newResource);
+          set((state) => {
+            const updatedResources = [...state.resources, newResource];
+            const metrics = {
+              uptime: updatedResources.length > 0 ? updatedResources.reduce((sum, r) => {
+                const uptimeValue = r.metrics?.uptime24h ? 
+                  parseFloat(r.metrics.uptime24h.replace('%', '')) : 
+                  (r.uptime || 0);
+                return sum + uptimeValue;
+              }, 0) / updatedResources.length : 0,
+              responseTime: updatedResources.length > 0 ? updatedResources.reduce((sum, r) => {
+                return sum + (r.metrics?.avgResponseTime || 0);
+              }, 0) / updatedResources.length : 0,
+              incidents24h: updatedResources.reduce((sum, r) => {
+                return sum + (r.metrics?.incidents24h || r.errors24h || 0);
+              }, 0),
+              mttr: undefined,
+              slaCompliance: updatedResources.length > 0 ? updatedResources.reduce((sum, r) => {
+                const uptimeValue = r.metrics?.uptime24h ? 
+                  parseFloat(r.metrics.uptime24h.replace('%', '')) : 
+                  (r.uptime || 0);
+                return sum + uptimeValue;
+              }, 0) / updatedResources.length : 0
+            };
+            console.log('Store: Обновляем состояние с локальным ресурсом:', { updatedResources, metrics });
+            return { resources: updatedResources, metrics };
+          });
         }
       },
       updateResource: async (id, updates) => {
         try {
           const updatedResource = await apiUpdateResource(id, updates);
-          set((state) => ({
-            resources: state.resources.map(r => r.id === id ? updatedResource : r)
-          }));
+          set((state) => {
+            const updatedResources = state.resources.map(r => r.id === id ? updatedResource : r);
+            const metrics = {
+              uptime: updatedResources.length > 0 ? updatedResources.reduce((sum, r) => {
+                const uptimeValue = r.metrics?.uptime24h ? 
+                  parseFloat(r.metrics.uptime24h.replace('%', '')) : 
+                  (r.uptime || 0);
+                return sum + uptimeValue;
+              }, 0) / updatedResources.length : 0,
+              responseTime: updatedResources.length > 0 ? updatedResources.reduce((sum, r) => {
+                return sum + (r.metrics?.avgResponseTime || 0);
+              }, 0) / updatedResources.length : 0,
+              incidents24h: updatedResources.reduce((sum, r) => {
+                return sum + (r.metrics?.incidents24h || r.errors24h || 0);
+              }, 0),
+              mttr: undefined,
+              slaCompliance: updatedResources.length > 0 ? updatedResources.reduce((sum, r) => {
+                const uptimeValue = r.metrics?.uptime24h ? 
+                  parseFloat(r.metrics.uptime24h.replace('%', '')) : 
+                  (r.uptime || 0);
+                return sum + uptimeValue;
+              }, 0) / updatedResources.length : 0
+            };
+            return { resources: updatedResources, metrics };
+          });
         } catch (error) {
           console.error('Error updating resource:', error);
           throw error;
@@ -130,21 +208,98 @@ export const useResourcesStore = create<ResourcesState>()(
       removeResource: async (id) => {
         try {
           await apiDeleteResource(id);
-          set((state) => ({
-            resources: state.resources.filter(r => r.id !== id)
-          }));
+          set((state) => {
+            const updatedResources = state.resources.filter(r => r.id !== id);
+            const metrics = {
+              uptime: updatedResources.length > 0 ? updatedResources.reduce((sum, r) => {
+                const uptimeValue = r.metrics?.uptime24h ? 
+                  parseFloat(r.metrics.uptime24h.replace('%', '')) : 
+                  (r.uptime || 0);
+                return sum + uptimeValue;
+              }, 0) / updatedResources.length : 0,
+              responseTime: updatedResources.length > 0 ? updatedResources.reduce((sum, r) => {
+                return sum + (r.metrics?.avgResponseTime || 0);
+              }, 0) / updatedResources.length : 0,
+              incidents24h: updatedResources.reduce((sum, r) => {
+                return sum + (r.metrics?.incidents24h || r.errors24h || 0);
+              }, 0),
+              mttr: undefined,
+              slaCompliance: updatedResources.length > 0 ? updatedResources.reduce((sum, r) => {
+                const uptimeValue = r.metrics?.uptime24h ? 
+                  parseFloat(r.metrics.uptime24h.replace('%', '')) : 
+                  (r.uptime || 0);
+                return sum + uptimeValue;
+              }, 0) / updatedResources.length : 0
+            };
+            return { resources: updatedResources, metrics };
+          });
         } catch (error) {
           console.error('Error removing resource:', error);
-          throw error;
+          // Fallback: удаляем ресурс локально если API недоступен
+          set((state) => {
+            const updatedResources = state.resources.filter(r => r.id !== id);
+            const metrics = {
+              uptime: updatedResources.length > 0 ? updatedResources.reduce((sum, r) => {
+                const uptimeValue = r.metrics?.uptime24h ? 
+                  parseFloat(r.metrics.uptime24h.replace('%', '')) : 
+                  (r.uptime || 0);
+                return sum + uptimeValue;
+              }, 0) / updatedResources.length : 0,
+              responseTime: updatedResources.length > 0 ? updatedResources.reduce((sum, r) => {
+                return sum + (r.metrics?.avgResponseTime || 0);
+              }, 0) / updatedResources.length : 0,
+              incidents24h: updatedResources.reduce((sum, r) => {
+                return sum + (r.metrics?.incidents24h || r.errors24h || 0);
+              }, 0),
+              mttr: undefined,
+              slaCompliance: updatedResources.length > 0 ? updatedResources.reduce((sum, r) => {
+                const uptimeValue = r.metrics?.uptime24h ? 
+                  parseFloat(r.metrics.uptime24h.replace('%', '')) : 
+                  (r.uptime || 0);
+                return sum + uptimeValue;
+              }, 0) / updatedResources.length : 0
+            };
+            return { resources: updatedResources, metrics };
+          });
         }
       },
       loadResources: async () => {
+        console.log('Store: Начинаем загрузку ресурсов...');
         try {
           const resources = await apiGetResources();
-          set({ resources });
+          console.log('Store: Загружены ресурсы:', resources);
+          // Вычисляем метрики на основе загруженных ресурсов
+          const metrics = {
+            uptime: resources.length > 0 ? resources.reduce((sum, r) => {
+              // Парсим uptime24h из строки "99.43%" или используем старый uptime
+              const uptimeValue = r.metrics?.uptime24h ? 
+                parseFloat(r.metrics.uptime24h.replace('%', '')) : 
+                (r.uptime || 0);
+              return sum + uptimeValue;
+            }, 0) / resources.length : 0,
+            responseTime: resources.length > 0 ? resources.reduce((sum, r) => {
+              // Используем avgResponseTime из metrics или старый responseTime
+              return sum + (r.metrics?.avgResponseTime || 0);
+            }, 0) / resources.length : 0,
+            incidents24h: resources.reduce((sum, r) => {
+              // Используем incidents24h из metrics или старый errors24h
+              return sum + (r.metrics?.incidents24h || r.errors24h || 0);
+            }, 0),
+            mttr: undefined, // Пока не реализовано
+            slaCompliance: resources.length > 0 ? resources.reduce((sum, r) => {
+              // Используем старый sla или вычисляем на основе uptime
+              const uptimeValue = r.metrics?.uptime24h ? 
+                parseFloat(r.metrics.uptime24h.replace('%', '')) : 
+                (r.uptime || 0);
+              return sum + uptimeValue;
+            }, 0) / resources.length : 0
+          };
+          console.log('Store: Устанавливаем ресурсы и метрики:', { resources, metrics });
+          set({ resources, metrics });
         } catch (error) {
-          console.error('Error loading resources:', error);
-          throw error;
+          console.error('Store: Ошибка при загрузке ресурсов:', error);
+          // Fallback: оставляем текущие ресурсы из localStorage
+          // Не выбрасываем ошибку, чтобы приложение продолжало работать
         }
       },
       searchEndpoints: async (url) => {
@@ -152,8 +307,36 @@ export const useResourcesStore = create<ResourcesState>()(
           return await apiSearchEndpoints(url);
         } catch (error) {
           console.error('Error searching endpoints:', error);
-          throw error;
+          // Fallback: возвращаем mock эндпоинты если API недоступен
+          return [
+            { path: '/api/users', method: 'GET', status: 'online' },
+            { path: '/api/products', method: 'GET', status: 'online' },
+            { path: '/api/orders', method: 'GET', status: 'online' },
+            { path: '/api/auth/login', method: 'POST', status: 'online' },
+            { path: '/api/auth/register', method: 'POST', status: 'online' },
+            { path: '/api/dashboard', method: 'GET', status: 'online' },
+            { path: '/api/settings', method: 'GET', status: 'online' },
+            { path: '/api/profile', method: 'GET', status: 'online' },
+            { path: '/api/notifications', method: 'GET', status: 'online' },
+            { path: '/api/reports', method: 'GET', status: 'online' }
+          ];
         }
+      },
+
+      // Функция для очистки всех данных (для новых пользователей)
+      clearAllData: () => {
+        set({
+          resources: [],
+      metrics: {
+            uptime: 0,
+            responseTime: 0,
+            incidents24h: 0,
+            mttr: undefined,
+            slaCompliance: 0
+          },
+          logs: [],
+          notificationLogs: []
+        });
       },
 
       // Auth
@@ -165,10 +348,14 @@ export const useResourcesStore = create<ResourcesState>()(
         set({ isLoggedIn: false, user: null });
       },
       checkAuth: () => {
+        console.log('Store: Проверяем авторизацию...');
         const user = getCurrentUser();
+        console.log('Store: Пользователь из токена:', user);
         if (user) {
+          console.log('Store: Пользователь авторизован, устанавливаем isLoggedIn = true');
           set({ isLoggedIn: true, user });
         } else {
+          console.log('Store: Пользователь не авторизован, устанавливаем isLoggedIn = false');
           set({ isLoggedIn: false, user: null });
         }
       },

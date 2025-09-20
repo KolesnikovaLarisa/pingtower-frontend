@@ -52,26 +52,32 @@ export async function refreshToken(): Promise<{ accessToken: string; refreshToke
 
 export function getCurrentUser(): User | null {
   const token = localStorage.getItem("accessToken");
+  console.log('Auth: Проверяем токен:', token ? 'есть' : 'отсутствует');
+  
   if (!token) return null;
 
   try {
     // Декодируем JWT токен (только payload)
     const payload = JSON.parse(atob(token.split('.')[1]));
+    console.log('Auth: Декодированный payload:', payload);
     
     // Проверяем, не истек ли токен
     if (payload.exp && payload.exp * 1000 < Date.now()) {
+      console.log('Auth: Токен истек, очищаем localStorage');
       localStorage.removeItem("accessToken");
       localStorage.removeItem("refreshToken");
       return null;
     }
 
-    return {
+    const user = {
       id: payload.sub || payload.userId,
       name: payload.name,
       email: payload.email
     };
+    console.log('Auth: Извлеченный пользователь:', user);
+    return user;
   } catch (error) {
-    console.error("Error decoding token:", error);
+    console.error("Auth: Ошибка при декодировании токена:", error);
     localStorage.removeItem("accessToken");
     localStorage.removeItem("refreshToken");
     return null;

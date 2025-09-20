@@ -44,7 +44,7 @@ const AuthPage = () => {
   // Instance selector is not needed
   
   const navigate = useNavigate()
-  const { login } = useResourcesStore()
+  const { login, clearAllData } = useResourcesStore()
 
   const loginForm = useForm<LoginFormData>({
     resolver: yupResolver(loginSchema),
@@ -71,6 +71,11 @@ const AuthPage = () => {
   
       // обновляем стор с данными пользователя
       login(response.user);
+      
+      // Если это регистрация, очищаем все данные для нового пользователя
+      if (!isLogin) {
+        clearAllData();
+      }
   
       navigate("/app");
     } catch (err: any) {
